@@ -330,14 +330,18 @@ const SUNDAY_RULE_FROM = "2026-10-18"; // Sundays from 18 Oct on are the leaders
 // Starting schedule: 11–13 Oct from the October calendar, the A–Z rotation 14–17 Oct,
 // then from Sunday 18 Oct the same rotation with every Sunday left open (Dee, due on 18 Oct, moves to Monday 19 Oct)
 const BASE = { "2026-10-11": "Paulo", "2026-10-12": "Catarina", "2026-10-13": "Rellvosh" };
-const SEED = { ...BASE, ...rotationDays(REGULARS, "2026-10-14", "2026-10-17"), ...rotationDays(REGULARS, SUNDAY_RULE_FROM, "2026-12-31", 4, true), "2026-10-18": "Nihc" };
+// Plan shifted one day (we fell behind): Paulo starts on Mon 12 Oct instead of Sun 11 Oct, then Catarina and Rellvosh,
+// and the A–Z rotation starts with Aaron on 15 Oct. Sundays from 18 Oct are the leadership's pick (Nihc on 18 Oct).
+const BASE_SHIFTED = { "2026-10-12": "Paulo", "2026-10-13": "Catarina", "2026-10-14": "Rellvosh" };
+const SEED = { ...BASE_SHIFTED, ...rotationDays(REGULARS, "2026-10-15", "2026-12-31", 0, true), "2026-10-18": "Nihc" };
 // earlier versions of the plan, used to update days nobody has edited by hand
 const OLD_SEEDS = [
   { ...BASE, ...rotationDays(REGULARS, "2026-10-14", "2026-12-31") },                                                          // v2: no Sunday rule
   { ...BASE, ...rotationDays(REGULARS, "2026-10-14", "2026-10-18"), ...rotationDays(REGULARS, "2026-10-19", "2026-12-31", 5, true) }, // v3: Sunday rule from 25 Oct
-  { ...BASE, ...rotationDays(REGULARS, "2026-10-14", "2026-10-17"), ...rotationDays(REGULARS, SUNDAY_RULE_FROM, "2026-12-31", 4, true) }  // v4: Sunday rule from 18 Oct, no picks yet
+  { ...BASE, ...rotationDays(REGULARS, "2026-10-14", "2026-10-17"), ...rotationDays(REGULARS, SUNDAY_RULE_FROM, "2026-12-31", 4, true) }, // v4: Sunday rule from 18 Oct, no picks yet
+  { ...BASE, ...rotationDays(REGULARS, "2026-10-14", "2026-10-17"), ...rotationDays(REGULARS, SUNDAY_RULE_FROM, "2026-12-31", 4, true), "2026-10-18": "Nihc" } // v5: Nihc picked on 18 Oct
 ];
-const SEED_VERSION = 5;
+const SEED_VERSION = 6;
 // a leadership pick is whoever is set on a Sunday from 18 Oct on
 const isPickDay = k => isSunday(k) && k >= SUNDAY_RULE_FROM;
 const regularDays = () => Object.keys(store.days).filter(k => !isPickDay(k));
