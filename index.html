@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Airship Captain Schedule</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: bridge console — today's captain up top, month grid in the middle, roster + editor beside/below */
+:root {
+  --bg: #0b1016;
+  --bg-2: #121a24;
+  --panel: #151f2b;
+  --line: #263547;
+  --fg: #e3e9f0;
+  --muted: #8797aa;
+  --rune: #3fd0c9;
+  --gold: #f0b54a;
+  --ember: #e2593a;
+  --f-display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Barlow", "Segoe UI", system-ui, sans-serif;
+  --f-num: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { background: var(--bg); }
+body {
+  color: var(--fg); font-family: var(--f-body); font-size: 15px; line-height: 1.5;
+  padding-inline: 16px; padding-block: 28px 48px;
+  background:
+    radial-gradient(ellipse 70% 40% at 50% -5%, rgba(63,208,201,.14), transparent 70%),
+    radial-gradient(ellipse 50% 30% at 90% 105%, rgba(240,181,74,.10), transparent 70%),
+    var(--bg);
+}
+.wrap { max-width: 1040px; margin-inline: auto; display: grid; gap: 22px; }
+.wrap > * { min-width: 0; }
+
+header { display: grid; gap: 10px; }
+.eyebrow { font-family: var(--f-display); font-size: 12px; letter-spacing: .22em; text-transform: uppercase; color: var(--rune); display: flex; align-items: center; gap: 10px; }
+.eyebrow::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--rune), transparent); opacity: .5; }
+h1 { margin: 0; font-family: var(--f-display); font-weight: 700; font-size: clamp(28px, 6vw, 46px); line-height: 1.05; text-transform: uppercase; letter-spacing: .02em; text-wrap: balance; }
+h1 .hl { color: var(--gold); text-shadow: 0 0 24px rgba(240,181,74,.35); }
+.lede { margin: 0; color: var(--muted); max-width: 64ch; }
+
+.panel {
+  position: relative; background: linear-gradient(180deg, var(--panel), var(--bg-2)); border: 1px solid var(--line);
+  clip-path: polygon(14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%, 0 14px);
+}
+.panel::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 2px; background: linear-gradient(90deg, transparent, var(--tc, var(--rune)), transparent); }
+.label { font-family: var(--f-display); font-size: 11.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+
+/* Bridge: today + next up */
+.bridge { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); }
+.today { padding: 18px 20px; display: grid; gap: 6px; align-content: center; border-right: 1px solid var(--line); background: linear-gradient(135deg, color-mix(in srgb, var(--cc, var(--gold)) 14%, transparent), transparent 70%); }
+.today .who { font-family: var(--f-display); font-weight: 700; font-size: clamp(30px, 6vw, 48px); line-height: 1; color: var(--cc, var(--fg)); text-shadow: 0 0 26px color-mix(in srgb, var(--cc, var(--gold)) 45%, transparent); overflow-wrap: anywhere; }
+.today .who.none { color: var(--muted); font-size: 24px; text-shadow: none; }
+.today .when { font-family: var(--f-num); font-size: 13px; color: var(--muted); }
+.next { padding: 14px 18px; display: grid; gap: 4px; align-content: start; }
+.next ol { margin: 4px 0 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.next li { display: grid; grid-template-columns: 5.6em minmax(0, 1fr); gap: 10px; align-items: center; padding: 3px 0; border-bottom: 1px solid rgba(38,53,71,.5); font-size: 14px; }
+.next li:last-child { border-bottom: 0; }
+.next li .d { font-family: var(--f-num); font-size: 12px; color: var(--muted); }
+.next li .n { font-weight: 600; color: var(--cc, var(--muted)); overflow-wrap: anywhere; }
+@media (max-width: 680px) { .bridge { grid-template-columns: 1fr; } .today { border-right: 0; border-bottom: 1px solid var(--line); } }
+
+/* Calendar */
+.cal-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.cal-head h2 { margin: 0; font-family: var(--f-display); font-size: clamp(20px, 4vw, 28px); letter-spacing: .06em; text-transform: uppercase; }
+.cal-head h2 b { color: var(--gold); }
+.nav { display: flex; gap: 6px; }
+.grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.dow { padding: 8px 6px; text-align: center; font-family: var(--f-display); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); background: var(--bg-2); border-bottom: 1px solid var(--line); }
+.day {
+  all: unset; box-sizing: border-box; cursor: pointer; position: relative; min-height: 86px; padding: 6px 7px;
+  border-right: 1px solid rgba(38,53,71,.6); border-bottom: 1px solid rgba(38,53,71,.6);
+  display: grid; grid-template-rows: auto 1fr; gap: 4px; min-width: 0; transition: background .15s;
+}
+.day:nth-child(7n) { border-right: 0; }
+.day:hover { background: color-mix(in srgb, var(--rune) 6%, transparent); }
+.day:focus-visible { outline: 2px solid var(--rune); outline-offset: -2px; }
+.day .num { font-family: var(--f-num); font-size: 13px; color: var(--muted); justify-self: end; }
+.day .cap {
+  align-self: end; justify-self: stretch; padding: 3px 6px; border-radius: 3px; font-weight: 600; font-size: 13.5px; line-height: 1.2;
+  color: var(--cc); background: color-mix(in srgb, var(--cc) 14%, transparent); border-left: 3px solid var(--cc);
+  overflow-wrap: anywhere; min-width: 0;
+}
+.day.empty { cursor: default; background: repeating-linear-gradient(135deg, transparent 0 6px, rgba(38,53,71,.25) 6px 7px); }
+.day.empty:hover { background: repeating-linear-gradient(135deg, transparent 0 6px, rgba(38,53,71,.25) 6px 7px); }
+.day.past .num, .day.past .cap { opacity: .45; }
+.day.today { box-shadow: inset 0 0 0 2px var(--gold); background: color-mix(in srgb, var(--gold) 7%, transparent); }
+.day.today .num { color: var(--gold); font-weight: 700; }
+.day.today .num::before { content: "TODAY "; font-family: var(--f-display); font-size: 9.5px; letter-spacing: .14em; }
+.day.sel { box-shadow: inset 0 0 0 2px var(--rune); }
+.day.today.sel { box-shadow: inset 0 0 0 2px var(--rune), inset 0 0 0 4px var(--gold); }
+.day.dim .cap { opacity: .18; }
+.day .open { align-self: end; font-size: 11.5px; color: #45566b; }
+@media (max-width: 640px) {
+  .day { min-height: 64px; padding: 4px 3px; }
+  .day .num { font-size: 11px; }
+  .day .cap { font-size: 10.5px; padding: 2px 3px; border-left-width: 2px; }
+  .day .open { display: none; }
+  .day.today .num::before { content: ""; }
+  .dow { font-size: 9.5px; letter-spacing: .06em; padding-inline: 2px; }
+}
+.dow .shortd { display: none; }
+@media (max-width: 640px) {
+  .dow .long { display: none; } .dow .shortd { display: inline; }
+  .day { padding-inline: 2px; }
+  .day .cap { font-size: 9px; padding: 2px 2px 2px 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; letter-spacing: -.02em; }
+  .roster li { grid-template-columns: 12px minmax(0, 1fr) auto; row-gap: 0; }
+  .roster .nx { grid-column: 2 / -1; }
+  .roster .nm { overflow-wrap: normal; }
+}
+.day.vs { background: color-mix(in srgb, var(--gold) 4%, transparent); }
+.day.vs-open .vs-open-lbl { align-self: end; font-size: 11px; font-weight: 600; color: var(--gold); border: 1px dashed color-mix(in srgb, var(--gold) 60%, transparent); border-radius: 3px; padding: 2px 5px; text-align: center; }
+.vs-mark { font-family: var(--f-display); font-size: 9.5px; letter-spacing: .1em; color: var(--gold); border: 1px solid color-mix(in srgb, var(--gold) 55%, transparent); border-radius: 2px; padding: 0 3px; margin-right: 5px; vertical-align: 1px; }
+.vs-tag { grid-column: 2; font-family: var(--f-display); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--gold); }
+@media (max-width: 640px) {
+  .day.vs-open .vs-open-lbl { font-size: 0; padding: 2px; border-style: dashed; }
+  .day.vs-open .vs-open-lbl::after { content: "VS"; font-size: 9px; }
+  .vs-mark { display: none; }
+}
+.picks-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
+.picks-sum { font-family: var(--f-num); font-size: 12.5px; color: var(--muted); }
+.picks-sum b { color: var(--gold); }
+.picks-sum .warn { color: var(--gold); }
+.pk-head, .pk-list li[data-name] { display: grid; grid-template-columns: 1.8em minmax(0, 1fr) 7.5em minmax(0, 1.6fr); gap: 10px; align-items: center; padding: 6px 8px; }
+.pk-head { font-family: var(--f-display); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); padding-block: 0 8px; }
+.pk-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.pk-list li[data-name] { border-radius: 3px; cursor: pointer; border-bottom: 1px solid rgba(38,53,71,.5); }
+.pk-list li[data-name]:hover, .pk-list li.on { background: color-mix(in srgb, var(--gold) 10%, transparent); }
+.pk-list li:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.pk-rank { font-family: var(--f-num); font-size: 12.5px; color: var(--muted); text-align: center; }
+.pk-list li:first-child .pk-rank { color: var(--bg); background: var(--gold); border-radius: 3px; font-weight: 700; }
+.pk-name { font-weight: 600; color: var(--gold); overflow-wrap: anywhere; }
+.pk-count { font-family: var(--f-num); font-size: 12.5px; color: var(--fg); white-space: nowrap; }
+.pk-dates { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.pk-date { font-family: var(--f-num); font-size: 11.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 3px; padding: 0 6px; white-space: nowrap; }
+.pk-date.now { color: var(--gold); border-color: var(--gold); }
+@media (max-width: 560px) {
+  .pk-head { display: none; }
+  .pk-list li[data-name] { grid-template-columns: 1.8em minmax(0, 1fr) auto; row-gap: 4px; }
+  .pk-dates { grid-column: 2 / -1; }
+}
+.pk-empty { color: var(--muted); font-size: 13.5px; }
+.picks-lbl { font-size: 12.5px; color: var(--muted); align-self: center; }
+.foot-note { padding: 10px 16px 12px; text-align: center; font-family: var(--f-display); font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); border-top: 1px solid var(--line); }
+
+/* Lower area: editor + roster */
+.lower { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 760px) { .lower { grid-template-columns: 1fr; } }
+.box { padding: 16px; display: grid; gap: 12px; }
+.box h2 { margin: 0; font-family: var(--f-display); font-size: 15px; letter-spacing: .12em; text-transform: uppercase; }
+.box p { margin: 0; color: var(--muted); font-size: 13.5px; }
+.edit-date { font-family: var(--f-display); font-size: 22px; font-weight: 700; letter-spacing: .04em; }
+.edit-date small { display: block; font-family: var(--f-body); font-size: 13px; font-weight: 500; color: var(--muted); letter-spacing: 0; }
+.field { width: 100%; min-width: 0; background: var(--bg); border: 1px solid var(--line); color: var(--fg); font-family: var(--f-body); font-size: 15px; padding: 9px 10px; border-radius: 3px; }
+.field:focus { outline: none; border-color: var(--rune); box-shadow: 0 0 0 3px rgba(63,208,201,.2); }
+.picks { display: flex; flex-wrap: wrap; gap: 6px; }
+.pick { all: unset; cursor: pointer; padding: 4px 9px; border-radius: 3px; font-size: 13px; font-weight: 600; color: var(--cc); border: 1px solid color-mix(in srgb, var(--cc) 45%, var(--line)); background: color-mix(in srgb, var(--cc) 8%, transparent); }
+.pick:hover, .pick[aria-pressed="true"] { background: color-mix(in srgb, var(--cc) 22%, transparent); border-color: var(--cc); }
+.pick:focus-visible { outline: 2px solid var(--cc); outline-offset: 2px; }
+.roster { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.roster li { all: unset; display: grid; grid-template-columns: 12px minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 6px 8px; border-radius: 3px; cursor: pointer; }
+.roster li:hover, .roster li.on { background: color-mix(in srgb, var(--cc) 10%, transparent); }
+.roster li:focus-visible { outline: 2px solid var(--cc); }
+.roster .dot { width: 10px; height: 10px; border-radius: 2px; background: var(--cc); transform: rotate(45deg); }
+.roster .nm { font-weight: 600; color: var(--cc); overflow-wrap: anywhere; }
+.roster .ct { font-family: var(--f-num); font-size: 12.5px; color: var(--muted); }
+.roster .nx { font-family: var(--f-num); font-size: 12px; color: var(--muted); white-space: nowrap; }
+.roster .nx b { color: var(--fg); font-weight: 500; }
+
+.rot-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: end; }
+.rot-grid > div { display: grid; gap: 6px; min-width: 0; }
+.rot-full { grid-column: 1 / -1; }
+.rot-hint { display: flex; gap: 12px; align-items: center; font-size: 13px; color: var(--muted); }
+.linkish { all: unset; cursor: pointer; color: var(--rune); font-size: 13px; text-decoration: underline; }
+.linkish:focus-visible { outline: 2px solid var(--rune); outline-offset: 2px; }
+.rot-check { grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; font-size: 14px; color: var(--muted); cursor: pointer; }
+.rot-check input { accent-color: var(--gold); width: 16px; height: 16px; }
+.rot-preview { margin: 0; font-size: 13.5px; color: var(--muted); }
+.rot-preview b { color: var(--fg); }
+input[type="date"].field { color-scheme: dark; }
+@media (max-width: 640px) { .rot-grid { grid-template-columns: 1fr 1fr; } .rot-grid > div:nth-of-type(4) { grid-column: 1 / -1; } }
+button {
+  font-family: var(--f-display); font-weight: 600; font-size: 13px; letter-spacing: .12em; text-transform: uppercase;
+  padding: 10px 16px; border: 1px solid var(--line); background: var(--bg-2); color: var(--fg); cursor: pointer;
+  clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  transition: border-color .15s, color .15s, background .15s;
+}
+button:hover { border-color: var(--rune); color: var(--rune); }
+button:focus-visible { outline: 2px solid var(--rune); outline-offset: 2px; }
+button.primary { background: var(--gold); color: var(--bg); border-color: var(--gold); }
+button.primary:hover { background: #f6c76e; color: var(--bg); }
+button.danger:hover { border-color: var(--ember); color: var(--ember); }
+button.danger.confirm { background: var(--ember); border-color: var(--ember); color: var(--fg); }
+.icon-btn { padding: 6px 12px; font-size: 16px; line-height: 1; clip-path: none; border-radius: 3px; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.msg { margin: 0; font-size: 13.5px; }
+.msg:empty { display: none; }
+.msg.ok { color: var(--rune); } .msg.err { color: var(--ember); } .msg.warn { color: var(--gold); }
+textarea.field { min-height: 90px; resize: vertical; font-family: var(--f-num); font-size: 12.5px; }
+footer { color: #56687d; font-size: 12.5px; font-family: var(--f-display); letter-spacing: .14em; text-transform: uppercase; text-align: center; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div class="eyebrow">X-Clash · USS Immortal · Airship</div>
+    <h1>Airship <span class="hl">Captain</span> Schedule</h1>
+    <p class="lede">Who captains the airship today, and who is next. The nine regulars take turns in A–Z order. Every Sunday the leadership picks a captain from outside the group after the VS results, so the regular due that day moves to Monday. Tap a day to set or change its captain.</p>
+  </header>
+
+  <section class="panel bridge" aria-label="Today's captain" style="--tc:var(--gold)">
+    <div class="today" id="today-box">
+      <span class="label" id="today-label">Captain today</span>
+      <div class="who" id="today-who">–</div>
+      <div class="when" id="today-when"></div>
+    </div>
+    <div class="next">
+      <span class="label">Next up</span>
+      <ol id="next-list"></ol>
+    </div>
+  </section>
+
+  <section class="panel" aria-label="Calendar" style="--tc:var(--rune)">
+    <div class="cal-head">
+      <h2 id="cal-title">October <b>2026</b></h2>
+      <div class="nav">
+        <button type="button" class="icon-btn" id="m-prev" aria-label="Previous month">‹</button>
+        <button type="button" class="icon-btn" id="m-today">Today</button>
+        <button type="button" class="icon-btn" id="m-next" aria-label="Next month">›</button>
+      </div>
+    </div>
+    <div class="grid" id="grid" role="grid" aria-label="Captain calendar"></div>
+    <div class="foot-note">USS Immortal · Captain Schedule</div>
+  </section>
+
+  <div class="lower">
+    <section class="panel box" aria-label="Set captain" style="--tc:var(--gold)">
+      <h2>Set captain</h2>
+      <div class="edit-date" id="edit-date">–</div>
+      <label class="label" for="cap-in" id="cap-label">Captain name</label>
+      <input class="field" id="cap-in" list="cap-list" maxlength="30" autocomplete="off" placeholder="Type a name or tap one below">
+      <datalist id="cap-list"></datalist>
+      <div class="picks" id="picks" aria-label="Known captains"></div>
+      <div class="actions">
+        <button type="button" class="primary" id="cap-save">Save</button>
+        <button type="button" id="cap-clear">Clear day</button>
+      </div>
+      <p class="msg" id="cap-msg" role="status"></p>
+    </section>
+
+    <section class="panel box" aria-label="Captains this month" style="--tc:var(--rune)">
+      <h2>Captains this month</h2>
+      <p>Tap a name to highlight that captain's days in the calendar.</p>
+      <ul class="roster" id="roster"></ul>
+    </section>
+  </div>
+
+  <section class="panel box picks-box" aria-label="Leadership picks" style="--tc:var(--gold)">
+    <div class="picks-head"><h2>⭐ Leadership picks</h2><span class="picks-sum" id="picks-sum"></span></div>
+    <p>Players from outside the nine regulars, chosen by the leadership every Sunday after the VS results. Tap a name to highlight their Sundays in the calendar.</p>
+    <div class="pk-head" aria-hidden="true"><span>#</span><span>Player</span><span>Picks</span><span>Picked on (newest first)</span></div>
+    <ul class="pk-list" id="picks-list"></ul>
+  </section>
+
+  <section class="panel box" aria-label="Fill rotation" style="--tc:var(--gold)">
+    <h2>Fill rotation</h2>
+    <p>Fills a period with one captain per day, in the order below, starting over after the last name. The first captain is picked to continue the rotation from the day before.</p>
+    <div class="rot-grid">
+      <div class="rot-full">
+        <label class="label" for="rot-names">Captains in rotation order</label>
+        <input class="field" id="rot-names" autocomplete="off">
+        <div class="rot-hint"><button type="button" class="linkish" id="rot-sort">Sort A–Z</button> <span id="rot-count"></span></div>
+      </div>
+      <div><label class="label" for="rot-from">From</label><input class="field" id="rot-from" type="date"></div>
+      <div><label class="label" for="rot-to">To</label><input class="field" id="rot-to" type="date"></div>
+      <div><label class="label" for="rot-first">First captain</label><select class="field" id="rot-first"></select></div>
+      <label class="rot-check"><input type="checkbox" id="rot-sun" checked> Leave Sundays open for the leadership pick (the captain due moves to Monday)</label>
+      <label class="rot-check"><input type="checkbox" id="rot-over"> Replace captains already set in this period</label>
+    </div>
+    <p class="rot-preview" id="rot-preview"></p>
+    <div class="actions"><button type="button" class="primary" id="rot-fill">Fill schedule</button></div>
+    <p class="msg" id="rot-msg" role="status"></p>
+  </section>
+
+  <section class="panel box" aria-label="Share and backup">
+    <h2>Share and backup</h2>
+    <p>The schedule is saved in this browser only. Copy a backup code now and then so nothing is lost, and paste it below to load the schedule on another device.</p>
+    <div class="actions">
+      <button type="button" class="primary" id="copy-discord">Copy month for Discord</button>
+      <button type="button" id="backup-copy">Copy backup code</button>
+      <button type="button" class="danger" id="clear-month">Clear this month</button>
+    </div>
+    <textarea class="field" id="backup" placeholder="Paste a backup code here" aria-label="Backup code"></textarea>
+    <div class="actions"><button type="button" id="backup-restore">Restore from code</button></div>
+    <p class="msg" id="share-msg" role="status"></p>
+  </section>
+
+  <footer>Immortals union · for the hunt</footer>
+</div>
+
+<script>
+const KEY = "airship-captains-v1";
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const DOW = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+const DOW_SHORT = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+// The nine regular captains, in alphabetical (rotation) order
+const REGULARS = ["Aaron", "Catarina", "ChaRLy", "Death", "Dee", "Domi", "Paulo", "Rellvosh", "Wargh"];
+// One captain per day, taking the names in order and starting over after the last one
+// skipSundays: Sundays stay open for the leadership's pick after VS, and the captain due that day moves to Monday
+function rotationDays(names, fromKey, toKey, startIndex = 0, skipSundays = false) {
+  const out = {}, [fy, fm, fd] = fromKey.split("-").map(Number), [ty, tm, td] = toKey.split("-").map(Number);
+  const d = new Date(fy, fm - 1, fd), end = new Date(ty, tm - 1, td);
+  for (let i = startIndex; d <= end; d.setDate(d.getDate() + 1)) {
+    if (skipSundays && d.getDay() === 0) continue;
+    out[`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`] = names[i % names.length];
+    i++;
+  }
+  return out;
+}
+const isSunday = k => { const [y, m, d] = k.split("-").map(Number); return new Date(y, m - 1, d).getDay() === 0; };
+const SUNDAY_RULE_FROM = "2026-10-18"; // Sundays from 18 Oct on are the leadership's pick
+// Starting schedule: 11–13 Oct from the October calendar, the A–Z rotation 14–17 Oct,
+// then from Sunday 18 Oct the same rotation with every Sunday left open (Dee, due on 18 Oct, moves to Monday 19 Oct)
+const BASE = { "2026-10-11": "Paulo", "2026-10-12": "Catarina", "2026-10-13": "Rellvosh" };
+const SEED = { ...BASE, ...rotationDays(REGULARS, "2026-10-14", "2026-10-17"), ...rotationDays(REGULARS, SUNDAY_RULE_FROM, "2026-12-31", 4, true), "2026-10-18": "Nihc" };
+// earlier versions of the plan, used to update days nobody has edited by hand
+const OLD_SEEDS = [
+  { ...BASE, ...rotationDays(REGULARS, "2026-10-14", "2026-12-31") },                                                          // v2: no Sunday rule
+  { ...BASE, ...rotationDays(REGULARS, "2026-10-14", "2026-10-18"), ...rotationDays(REGULARS, "2026-10-19", "2026-12-31", 5, true) }, // v3: Sunday rule from 25 Oct
+  { ...BASE, ...rotationDays(REGULARS, "2026-10-14", "2026-10-17"), ...rotationDays(REGULARS, SUNDAY_RULE_FROM, "2026-12-31", 4, true) }  // v4: Sunday rule from 18 Oct, no picks yet
+];
+const SEED_VERSION = 5;
+// a leadership pick is whoever is set on a Sunday from 18 Oct on
+const isPickDay = k => isSunday(k) && k >= SUNDAY_RULE_FROM;
+const regularDays = () => Object.keys(store.days).filter(k => !isPickDay(k));
+const pickDays = () => Object.keys(store.days).filter(isPickDay).sort();
+const nameEq = (a, b) => a.toLowerCase() === b.toLowerCase();
+const PALETTE = ["#f0b54a", "#3fd0c9", "#b48cf5", "#5b9cf5", "#e2593a", "#7fd67a", "#f27fb2", "#e8c86a", "#6fc6f0", "#d89a6a", "#a9b8c8", "#c8e06a"];
+
+const pad = n => String(n).padStart(2, "0");
+const keyOf = (y, m, d) => `${y}-${pad(m + 1)}-${pad(d)}`;
+const esc = t => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const now = new Date();
+const TODAY = keyOf(now.getFullYear(), now.getMonth(), now.getDate());
+
+let store = { days: { ...SEED }, seedV: SEED_VERSION };
+try {
+  const s = JSON.parse(localStorage.getItem(KEY) || "null");
+  if (s && s.days) {
+    store = { days: clean(s.days), seedV: Number(s.seedV) || 1 };
+    // schedule saved by an earlier version: add the new rotation days, never overwrite days someone already set
+    if (store.seedV < SEED_VERSION) {
+      // update days that still hold the old plan (or are empty); days someone changed by hand stay as they are
+      const oldPlan = OLD_SEEDS[Math.min(Math.max(store.seedV - 2, 0), OLD_SEEDS.length - 1)];
+      new Set([...Object.keys(oldPlan), ...Object.keys(SEED)]).forEach(k => {
+        const cur = store.days[k];
+        if (!cur || cur === oldPlan[k]) { if (SEED[k]) store.days[k] = SEED[k]; else delete store.days[k]; }
+      });
+      store.seedV = SEED_VERSION; localStorage.setItem(KEY, JSON.stringify(store));
+    }
+  }
+} catch (e) {}
+function clean(days) { const o = {}; Object.keys(days || {}).forEach(k => { if (/^\d{4}-\d{2}-\d{2}$/.test(k) && typeof days[k] === "string" && days[k].trim()) o[k] = days[k].trim().slice(0, 30); }); return o; }
+function save() { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) {} }
+
+let viewY = now.getFullYear(), viewM = now.getMonth();
+let selected = TODAY, highlight = null;
+
+// every captain keeps the same colour: by order of first appearance in the schedule
+function captains() {
+  const seen = [];
+  Object.keys(store.days).sort().forEach(k => { const n = store.days[k]; if (!seen.some(s => s.toLowerCase() === n.toLowerCase())) seen.push(n); });
+  return seen;
+}
+function colorOf(name) {
+  if (!name) return "var(--muted)";
+  const i = captains().findIndex(n => n.toLowerCase() === name.toLowerCase());
+  return PALETTE[(i < 0 ? captains().length : i) % PALETTE.length];
+}
+const parseKey = k => { const [y, m, d] = k.split("-").map(Number); return new Date(y, m - 1, d); };
+const nice = k => { const d = parseKey(k); return `${DOW[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()]}`; };
+const short = k => { const d = parseKey(k); return `${DOW_SHORT[d.getDay()]} ${d.getDate()} ${MONTHS[d.getMonth()].slice(0, 3)}`; };
+const addDays = (k, n) => { const d = parseKey(k); d.setDate(d.getDate() + n); return keyOf(d.getFullYear(), d.getMonth(), d.getDate()); };
+
+function renderBridge() {
+  const who = store.days[TODAY];
+  const box = document.getElementById("today-box"), el = document.getElementById("today-who");
+  const pickToday = isPickDay(TODAY);
+  box.style.setProperty("--cc", pickToday ? "var(--gold)" : colorOf(who));
+  document.getElementById("today-label").textContent = pickToday ? "Leadership pick today" : "Captain today";
+  el.textContent = who || (pickToday ? "Not set yet" : "No captain set");
+  el.classList.toggle("none", !who);
+  document.getElementById("today-when").textContent = nice(TODAY);
+  const rows = [];
+  for (let i = 1; i <= 6; i++) { const k = addDays(TODAY, i), n = store.days[k]; const vs = isSunday(k) && k >= SUNDAY_RULE_FROM; rows.push(`<li style="--cc:${vs ? "var(--gold)" : n ? colorOf(n) : "var(--muted)"}"><span class="d">${i === 1 ? "Tomorrow" : short(k)}</span><span class="n">${n ? esc(n) : vs ? "Leadership pick (after VS)" : "–"}</span>${n && vs ? `<span class="vs-tag">VS pick</span>` : ""}</li>`); }
+  document.getElementById("next-list").innerHTML = rows.join("");
+}
+
+function renderCal() {
+  document.getElementById("cal-title").innerHTML = `${MONTHS[viewM]} <b>${viewY}</b>`;
+  // weeks start on Monday: Mon = column 0 … Sun = column 6
+  const first = (new Date(viewY, viewM, 1).getDay() + 6) % 7, days = new Date(viewY, viewM + 1, 0).getDate();
+  const ORDER = [1, 2, 3, 4, 5, 6, 0];
+  let html = ORDER.map(i => `<div class="dow" role="columnheader"><span class="long">${DOW[i]}</span><span class="shortd" aria-hidden="true">${DOW_SHORT[i]}</span></div>`).join("");
+  for (let i = 0; i < first; i++) html += `<div class="day empty" aria-hidden="true"></div>`;
+  for (let d = 1; d <= days; d++) {
+    const k = keyOf(viewY, viewM, d), n = store.days[k];
+    const vs = isSunday(k) && k >= SUNDAY_RULE_FROM;
+    const cls = ["day", vs ? "vs" : "", vs && !n ? "vs-open" : "", k === TODAY ? "today" : "", k < TODAY ? "past" : "", k === selected ? "sel" : "", highlight && (!n || n.toLowerCase() !== highlight.toLowerCase()) ? "dim" : ""].join(" ");
+    html += `<button type="button" class="${cls}" data-k="${k}" style="--cc:${vs ? "var(--gold)" : colorOf(n)}" aria-label="${nice(k)}: ${n ? (vs ? "leadership pick " : "captain ") + esc(n) : vs ? "leadership pick, not set yet" : "no captain"}">
+      <span class="num">${vs ? `<span class="vs-mark">VS</span>` : ""}${d}</span>${n ? `<span class="cap">${esc(n)}</span>` : vs ? `<span class="vs-open-lbl">Leadership pick</span>` : `<span class="open">Open</span>`}</button>`;
+  }
+  const tail = (7 - ((first + days) % 7)) % 7;
+  for (let i = 0; i < tail; i++) html += `<div class="day empty" aria-hidden="true"></div>`;
+  document.getElementById("grid").innerHTML = html;
+}
+
+function renderEditor() {
+  const n = store.days[selected] || "";
+  const vsSel = isSunday(selected) && selected >= SUNDAY_RULE_FROM;
+  document.getElementById("edit-date").innerHTML = `${esc(nice(selected))}<small>${n ? (vsSel ? "Leadership pick: " : "Captain: ") + esc(n) : vsSel ? "Leadership pick after VS – type the chosen player's name" : "No captain set yet"}</small>`;
+  const inp = document.getElementById("cap-in");
+  if (document.activeElement !== inp) inp.value = n;
+  // regular days offer the regular captains; Sundays offer players the leadership picked before
+  const caps = vsSel ? pickedNames() : regularNames();
+  document.getElementById("cap-label").textContent = vsSel ? "Leadership pick (player name)" : "Captain name";
+  document.getElementById("cap-list").innerHTML = caps.map(c => `<option value="${esc(c)}"></option>`).join("");
+  document.getElementById("picks").innerHTML = (vsSel && caps.length ? `<span class="picks-lbl">Picked before:</span>` : "") +
+    caps.map(c => `<button type="button" class="pick" style="--cc:${vsSel ? "var(--gold)" : colorOf(c)}" data-name="${esc(c)}" aria-pressed="${nameEq(c, n)}">${esc(c)}</button>`).join("");
+}
+
+function renderRoster() {
+  const prefix = `${viewY}-${pad(viewM + 1)}-`;
+  const caps = regularNames();
+  const stats = caps.map(c => {
+    const mine = regularDays().filter(k => nameEq(store.days[k], c));
+    const inMonth = mine.filter(k => k.startsWith(prefix)).length;
+    const nextK = mine.filter(k => k >= TODAY).sort()[0];
+    return { c, inMonth, nextK };
+  }).filter(s => s.inMonth > 0 || s.nextK).sort((a, b) => b.inMonth - a.inMonth || a.c.localeCompare(b.c));
+  document.getElementById("roster").innerHTML = stats.length ? stats.map(s => `
+    <li tabindex="0" role="button" class="${highlight && highlight.toLowerCase() === s.c.toLowerCase() ? "on" : ""}" style="--cc:${colorOf(s.c)}" data-name="${esc(s.c)}" aria-label="Highlight ${esc(s.c)}">
+      <span class="dot"></span><span class="nm">${esc(s.c)}</span><span class="ct">${s.inMonth}× this month</span>
+      <span class="nx">${s.nextK ? (s.nextK === TODAY ? "<b>today</b>" : "next " + short(s.nextK)) : "–"}</span></li>`).join("")
+    : `<li style="--cc:var(--muted)"><span></span><span class="ct">No captains in ${MONTHS[viewM]} yet</span></li>`;
+}
+function regularNames() { const out = []; regularDays().sort().forEach(k => { const n = store.days[k]; if (!out.some(o => nameEq(o, n))) out.push(n); }); return out; }
+function pickedNames() { const out = []; pickDays().reverse().forEach(k => { const n = store.days[k]; if (!out.some(o => nameEq(o, n))) out.push(n); }); return out; }
+function renderPicks() {
+  const days = pickDays(), groups = [];
+  days.forEach(k => { const n = store.days[k]; let g = groups.find(x => nameEq(x.name, n)); if (!g) groups.push(g = { name: n, dates: [] }); g.dates.push(k); });
+  // most picks first; on a tie, the one picked most recently first
+  groups.sort((a, b) => b.dates.length - a.dates.length || b.dates.at(-1).localeCompare(a.dates.at(-1)));
+  const sundays = (() => { let c = 0; for (let k = SUNDAY_RULE_FROM; k <= TODAY; k = addDays(k, 7)) c++; return c; })();
+  const openPast = (() => { let c = 0; for (let k = SUNDAY_RULE_FROM; k <= TODAY; k = addDays(k, 7)) if (!store.days[k]) c++; return c; })();
+  document.getElementById("picks-sum").innerHTML = `<b>${days.length}</b> pick${days.length === 1 ? "" : "s"} · <b>${groups.length}</b> player${groups.length === 1 ? "" : "s"}` + (openPast ? ` · <span class="warn">${openPast} Sunday${openPast === 1 ? "" : "s"} so far without a name</span>` : "");
+  document.getElementById("picks-list").innerHTML = groups.length ? groups.map((g, i) => `
+    <li tabindex="0" role="button" class="${highlight && nameEq(highlight, g.name) ? "on" : ""}" data-name="${esc(g.name)}" aria-label="Highlight ${esc(g.name)}">
+      <span class="pk-rank">${i + 1}</span>
+      <span class="pk-name">${esc(g.name)}</span>
+      <span class="pk-count">${g.dates.length}× picked</span>
+      <span class="pk-dates">${g.dates.slice().reverse().map(k => `<span class="pk-date${k === TODAY ? " now" : ""}">${esc(short(k))}</span>`).join("")}</span>
+    </li>`).join("")
+    : `<li class="pk-empty">No leadership picks yet. Tap a Sunday in the calendar and type the chosen player's name.</li>`;
+}
+function renderAll() { renderBridge(); renderCal(); renderEditor(); renderRoster(); renderPicks(); }
+
+function setMsg(id, t, kind) { const m = document.getElementById(id); m.className = "msg " + (kind || ""); m.textContent = t; }
+
+document.getElementById("grid").addEventListener("click", e => {
+  const b = e.target.closest(".day[data-k]"); if (!b) return;
+  selected = b.dataset.k; setMsg("cap-msg", "");
+  renderCal(); renderEditor();
+  if (matchMedia("(max-width: 760px)").matches) document.getElementById("edit-date").scrollIntoView({ behavior: "smooth", block: "center" });
+});
+document.getElementById("picks").addEventListener("click", e => {
+  const b = e.target.closest(".pick"); if (!b) return;
+  setCaptain(b.dataset.name);
+});
+function setCaptain(raw) {
+  let name = raw.trim().replace(/\s+/g, " ");
+  if (!name) { setMsg("cap-msg", "Type a captain name, or use Clear day to empty the day.", "err"); return; }
+  const known = captains().find(c => c.toLowerCase() === name.toLowerCase());
+  if (known) name = known; // keep one spelling per captain
+  store.days[selected] = name; save();
+  setMsg("cap-msg", `${name} is captain on ${nice(selected)}.`, "ok");
+  document.getElementById("cap-in").value = name;
+  renderAll();
+}
+document.getElementById("cap-save").addEventListener("click", () => setCaptain(document.getElementById("cap-in").value));
+document.getElementById("cap-in").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); setCaptain(e.target.value); } });
+document.getElementById("cap-clear").addEventListener("click", () => {
+  if (!store.days[selected]) { setMsg("cap-msg", "This day has no captain.", ""); return; }
+  const n = store.days[selected]; delete store.days[selected]; save();
+  document.getElementById("cap-in").value = "";
+  setMsg("cap-msg", `${n} removed from ${nice(selected)}.`, "ok"); renderAll();
+});
+document.getElementById("picks-list").addEventListener("click", e => {
+  const li = e.target.closest("li[data-name]"); if (!li) return;
+  highlight = highlight && nameEq(highlight, li.dataset.name) ? null : li.dataset.name;
+  renderCal(); renderRoster(); renderPicks();
+});
+document.getElementById("picks-list").addEventListener("keydown", e => { if ((e.key === "Enter" || e.key === " ") && e.target.matches("li[data-name]")) { e.preventDefault(); e.target.click(); } });
+document.getElementById("roster").addEventListener("click", e => {
+  const li = e.target.closest("li[data-name]"); if (!li) return;
+  highlight = highlight && highlight.toLowerCase() === li.dataset.name.toLowerCase() ? null : li.dataset.name;
+  renderCal(); renderRoster(); renderPicks();
+});
+document.getElementById("roster").addEventListener("keydown", e => { if ((e.key === "Enter" || e.key === " ") && e.target.matches("li[data-name]")) { e.preventDefault(); e.target.click(); } });
+function goMonth(dy, dm) { const d = new Date(viewY, viewM + dm, 1); viewY = d.getFullYear(); viewM = d.getMonth(); renderCal(); renderRoster(); }
+document.getElementById("m-prev").addEventListener("click", () => goMonth(0, -1));
+document.getElementById("m-next").addEventListener("click", () => goMonth(0, 1));
+document.getElementById("m-today").addEventListener("click", () => { viewY = now.getFullYear(); viewM = now.getMonth(); selected = TODAY; renderAll(); });
+
+async function copyText(text, okText) {
+  const area = document.getElementById("backup");
+  try { await navigator.clipboard.writeText(text); setMsg("share-msg", okText, "ok"); }
+  catch (e) { area.value = text; area.focus(); area.select(); setMsg("share-msg", "Copying was blocked here. The text is selected in the box, so copy it manually.", "ok"); }
+}
+document.getElementById("copy-discord").addEventListener("click", () => {
+  const prefix = `${viewY}-${pad(viewM + 1)}-`;
+  const ks = Object.keys(store.days).filter(k => k.startsWith(prefix)).sort();
+  const L = [`**🛩️ Airship Captain Schedule – ${MONTHS[viewM]} ${viewY}**`, ""];
+  if (!ks.length) L.push("_No captains set this month_");
+  ks.forEach(k => L.push(`${k === TODAY ? "➡️ " : ""}${short(k)} – **${store.days[k]}**${isPickDay(k) ? " ⭐ leadership pick" : ""}`));
+  copyText(L.join("\n"), "Copied. Paste it into Discord.");
+});
+document.getElementById("backup-copy").addEventListener("click", () => copyText("AIRSHIP1:" + btoa(unescape(encodeURIComponent(JSON.stringify(store)))), "Backup code copied. Keep it somewhere safe."));
+document.getElementById("backup-restore").addEventListener("click", () => {
+  const raw = document.getElementById("backup").value.trim();
+  if (!raw.startsWith("AIRSHIP1:")) { setMsg("share-msg", "That is not a backup code from this page. It should start with AIRSHIP1:", "err"); return; }
+  try {
+    const data = JSON.parse(decodeURIComponent(escape(atob(raw.slice(9)))));
+    store = { days: clean(data.days), seedV: SEED_VERSION }; save(); renderAll(); initRotation(); document.getElementById("backup").value = "";
+    setMsg("share-msg", `Restored ${Object.keys(store.days).length} captain days.`, "ok");
+  } catch (e) { setMsg("share-msg", "The backup code is damaged or incomplete. Copy the whole code and try again.", "err"); }
+});
+const clearBtn = document.getElementById("clear-month"); let armed = false;
+clearBtn.addEventListener("click", () => {
+  if (!armed) { armed = true; clearBtn.classList.add("confirm"); clearBtn.textContent = `Click again to clear ${MONTHS[viewM]}`; setTimeout(() => { armed = false; clearBtn.classList.remove("confirm"); clearBtn.textContent = "Clear this month"; }, 4000); return; }
+  armed = false; clearBtn.classList.remove("confirm"); clearBtn.textContent = "Clear this month";
+  const prefix = `${viewY}-${pad(viewM + 1)}-`; Object.keys(store.days).filter(k => k.startsWith(prefix)).forEach(k => delete store.days[k]);
+  save(); renderAll(); setMsg("share-msg", `${MONTHS[viewM]} ${viewY} cleared.`, "ok");
+});
+
+renderAll();
+
+/* ---- Fill rotation ---- */
+const rotNames = document.getElementById("rot-names"), rotFrom = document.getElementById("rot-from"), rotTo = document.getElementById("rot-to"),
+      rotFirst = document.getElementById("rot-first"), rotOver = document.getElementById("rot-over"), rotSun = document.getElementById("rot-sun");
+const parseNames = () => {
+  const out = [];
+  rotNames.value.split(/[,;\n]/).map(x => x.trim().replace(/\s+/g, " ")).filter(Boolean).forEach(n => {
+    const known = captains().find(c => c.toLowerCase() === n.toLowerCase()); const nm = (known || n).slice(0, 30);
+    if (!out.some(o => o.toLowerCase() === nm.toLowerCase())) out.push(nm);
+  });
+  return out;
+};
+function lastScheduled() { return Object.keys(store.days).sort().pop() || TODAY; }
+// which captain should come first so the order continues from the day before "From"
+function suggestedFirst(names, fromKey) {
+  // look back past Sundays (and stand-ins) to the last regular captain
+  for (let b = 1; b <= 7; b++) {
+    const prev = store.days[addDays(fromKey, -b)];
+    const i = prev ? names.findIndex(n => n.toLowerCase() === prev.toLowerCase()) : -1;
+    if (i >= 0) return (i + 1) % names.length;
+  }
+  return 0;
+}
+let rotFirstTouched = false;
+function refreshRotation(resetFirst) {
+  const names = parseNames();
+  document.getElementById("rot-count").textContent = `${names.length} captain${names.length === 1 ? "" : "s"}`;
+  const keep = rotFirst.value;
+  rotFirst.innerHTML = names.map((n, i) => `<option value="${i}">${esc(n)}</option>`).join("");
+  if (names.length) {
+    const sugg = rotFrom.value ? suggestedFirst(names, rotFrom.value) : 0;
+    rotFirst.value = (!resetFirst && rotFirstTouched && keep !== "" && Number(keep) < names.length) ? keep : String(sugg);
+  }
+  const pv = document.getElementById("rot-preview");
+  if (!names.length || !rotFrom.value || !rotTo.value) { pv.textContent = "Fill in the captains and both dates."; return; }
+  if (rotTo.value < rotFrom.value) { pv.textContent = "“To” must be on or after “From”."; return; }
+  const plan = rotationDays(names, rotFrom.value, rotTo.value, Number(rotFirst.value), rotSun.checked);
+  const ks = Object.keys(plan), taken = ks.filter(k => store.days[k]).length;
+  const changes = rotOver.checked ? ks.filter(k => store.days[k] !== plan[k]).length : ks.length - taken;
+  const suns = rotSun.checked ? (() => { let c = 0; for (let k = rotFrom.value; k <= rotTo.value; k = addDays(k, 1)) if (isSunday(k)) c++; return c; })() : 0;
+  pv.innerHTML = (suns ? `${suns} Sunday${suns === 1 ? "" : "s"} left open for the leadership pick. ` : "") + `<b>${ks.length}</b> days from ${esc(short(rotFrom.value))} to ${esc(short(rotTo.value))}, starting with <b>${esc(plan[ks[0]])}</b>. ` +
+    (taken ? (rotOver.checked ? `${taken} already set will be replaced where different (${changes} changes).` : `${taken} already have a captain and stay as they are; ${changes} empty days get filled.`) : `All ${ks.length} days are empty.`);
+}
+function initRotation() {
+  if (!rotNames.value.trim()) rotNames.value = REGULARS.join(", "); // the nine regulars; one-off stand-ins are not added to the rotation
+  const from = addDays(lastScheduled() < TODAY ? TODAY : lastScheduled(), 1);
+  const f = parseKey(from), e = new Date(f.getFullYear(), f.getMonth() + 2, 0); // to the last day of the following month
+  const to = keyOf(e.getFullYear(), e.getMonth(), e.getDate());
+  rotFrom.value = from; rotTo.value = to;
+  refreshRotation(true);
+}
+document.getElementById("rot-sort").addEventListener("click", () => { rotNames.value = parseNames().sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" })).join(", "); refreshRotation(true); });
+rotNames.addEventListener("input", () => refreshRotation(true));
+[rotFrom, rotTo].forEach(el => el.addEventListener("change", () => refreshRotation(true)));
+rotOver.addEventListener("change", () => refreshRotation(false));
+rotSun.addEventListener("change", () => refreshRotation(false));
+rotFirst.addEventListener("change", () => { rotFirstTouched = true; refreshRotation(false); });
+document.getElementById("rot-fill").addEventListener("click", () => {
+  const names = parseNames();
+  if (!names.length) { setMsg("rot-msg", "Add at least one captain name.", "err"); return; }
+  if (!rotFrom.value || !rotTo.value || rotTo.value < rotFrom.value) { setMsg("rot-msg", "Choose a “From” date and a “To” date on or after it.", "err"); return; }
+  const plan = rotationDays(names, rotFrom.value, rotTo.value, Number(rotFirst.value), rotSun.checked);
+  let n = 0;
+  Object.keys(plan).forEach(k => { if (rotOver.checked || !store.days[k]) { if (store.days[k] !== plan[k]) n++; store.days[k] = plan[k]; } });
+  save(); renderAll();
+  setMsg("rot-msg", n ? `Filled ${n} day${n === 1 ? "" : "s"} from ${short(rotFrom.value)} to ${short(rotTo.value)}.` : "Nothing to change: every day in this period already has a captain.", n ? "ok" : "");
+  rotFirstTouched = false; initRotation(); // move the dates on to the next empty period
+});
+initRotation();
+</script>
+</body>
+</html>
