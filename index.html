@@ -60,7 +60,7 @@ h1 .hl { color: var(--gold); text-shadow: 0 0 24px rgba(240,181,74,.35); }
 .today .when { font-family: var(--f-num); font-size: 13px; color: var(--muted); }
 .next { padding: 14px 18px; display: grid; gap: 4px; align-content: start; }
 .next ol { margin: 4px 0 0; padding: 0; list-style: none; display: grid; gap: 2px; }
-.next li { display: grid; grid-template-columns: 5.6em minmax(0, 1fr); gap: 10px; align-items: center; padding: 3px 0; border-bottom: 1px solid rgba(38,53,71,.5); font-size: 14px; }
+.next li { display: grid; grid-template-columns: 8.2em minmax(0, 1fr); gap: 10px; align-items: center; padding: 3px 0; border-bottom: 1px solid rgba(38,53,71,.5); font-size: 14px; }
 .next li:last-child { border-bottom: 0; }
 .next li .d { font-family: var(--f-num); font-size: 12px; color: var(--muted); }
 .next li .n { font-weight: 600; color: var(--cc, var(--muted)); overflow-wrap: anywhere; }
@@ -147,6 +147,22 @@ h1 .hl { color: var(--gold); text-shadow: 0 0 24px rgba(240,181,74,.35); }
 }
 .pk-empty { color: var(--muted); font-size: 13.5px; }
 .picks-lbl { font-size: 12.5px; color: var(--muted); align-self: center; }
+/* Zone switch */
+.zone-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; padding: 12px 16px; }
+.seg { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.seg .label { margin-right: 4px; }
+.seg-btn { clip-path: none; border-radius: 3px; padding: 7px 12px; font-size: 12.5px; letter-spacing: .08em; }
+.seg-btn[aria-checked="true"] { background: var(--rune); border-color: var(--rune); color: var(--bg); }
+.zone-bar .zone-sel { width: auto; min-width: 0; max-width: 100%; padding: 7px 10px; font-size: 14px; }
+.zone-note { margin: 0; flex-basis: 100%; font-size: 13.5px; color: var(--muted); }
+.zone-note b { color: var(--fg); }
+.countdown { display: inline-block; margin-top: 6px; color: var(--fg); font-family: var(--f-body); font-size: 14px; }
+.countdown b { color: var(--cc, var(--gold)); }
+.next li .d small { display: block; font-size: 10.5px; color: #6b7c90; white-space: nowrap; }
+.day .rs { display: block; font-size: 10px; color: #5f7186; font-weight: 400; letter-spacing: 0; }
+.day.today .num::before { content: "NOW "; }
+.edit-date small.shift { color: var(--rune); font-family: var(--f-num); font-size: 12px; margin-bottom: 2px; }
+@media (max-width: 640px) { .day .rs { display: none; } }
 .foot-note { padding: 10px 16px 12px; text-align: center; font-family: var(--f-display); font-size: 12px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); border-top: 1px solid var(--line); }
 
 /* Lower area: editor + roster */
@@ -215,6 +231,17 @@ footer { color: #56687d; font-size: 12.5px; font-family: var(--f-display); lette
     <h1>Airship <span class="hl">Captain</span> Schedule</h1>
     <p class="lede">Who captains the airship today, and who is next. The nine regulars take turns in A–Z order. Every Sunday the leadership picks a captain from outside the group after the VS results, so the regular due that day moves to Monday. Tap a day to set or change its captain.</p>
   </header>
+
+  <section class="panel zone-bar" aria-label="Where you live" style="--tc:var(--rune)">
+    <div class="seg" role="radiogroup" aria-label="I live in">
+      <span class="label">I live in</span>
+      <button type="button" class="seg-btn" role="radio" data-region="eu">🇪🇺 Europe</button>
+      <button type="button" class="seg-btn" role="radio" data-region="us">🇺🇸 USA</button>
+      <button type="button" class="seg-btn" role="radio" data-region="other">🌐 All time zones</button>
+    </div>
+    <select class="field zone-sel" id="zone-sel" aria-label="Time zone"></select>
+    <p class="zone-note" id="zone-note"></p>
+  </section>
 
   <section class="panel bridge" aria-label="Today's captain" style="--tc:var(--gold)">
     <div class="today" id="today-box">
@@ -352,8 +379,153 @@ const PALETTE = ["#f0b54a", "#3fd0c9", "#b48cf5", "#5b9cf5", "#e2593a", "#7fd67a
 const pad = n => String(n).padStart(2, "0");
 const keyOf = (y, m, d) => `${y}-${pad(m + 1)}-${pad(d)}`;
 const esc = t => String(t ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const now = new Date();
-const TODAY = keyOf(now.getFullYear(), now.getMonth(), now.getDate());
+/* ---- Server time ----
+   The game day changes at the server reset, 00:00 UTC-2 (= 02:00 UTC), the same moment for everyone.
+   Each calendar day is a server day; "today" is the server day that is running right now. */
+const RESET_UTC_HOUR = 2;
+const serverKeyAt = ms => { const d = new Date(ms - RESET_UTC_HOUR * 3600000); return keyOf(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()); };
+const resetMs = k => { const [y, m, d] = k.split("-").map(Number); return Date.UTC(y, m - 1, d, RESET_UTC_HOUR); }; // start of server day k
+let TODAY = serverKeyAt(Date.now());
+const now = (() => { const [y, m, d] = TODAY.split("-").map(Number); return new Date(y, m - 1, d); })();
+
+/* ---- Where you live: Europe / USA (+ exact time zone) ---- */
+const ZONES = {
+  eu: [{ tz: "Europe/London", label: "UK" }, { tz: "Europe/Stockholm", label: "Sweden / Central Europe" }, { tz: "Europe/Helsinki", label: "Eastern Europe (Helsinki, Kyiv, Athens)" }],
+  us: [{ tz: "America/New_York", label: "US Eastern (New York)" }, { tz: "America/Chicago", label: "US Central (Texas)" }, { tz: "America/Denver", label: "US Mountain" }, { tz: "America/Phoenix", label: "US Arizona (no summer time)" }, { tz: "America/Los_Angeles", label: "US Pacific" }, { tz: "America/Anchorage", label: "US Alaska" }, { tz: "Pacific/Honolulu", label: "US Hawaii" }],
+  other: []
+};
+const DEVICE_TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch (e) { return "UTC"; } })();
+// "All time zones": every UTC offset in use, from UTC-12 to UTC+14, with the main places for each.
+// The offset is read live, so summer/winter time is always right, and the list is sorted by it.
+const OTHER_ZONES = [
+  ["Etc/GMT+12", "Baker & Howland Islands"],
+  ["Pacific/Pago_Pago", "American Samoa, Niue"],
+  ["Pacific/Honolulu", "Hawaii"],
+  ["Pacific/Marquesas", "Marquesas Islands"],
+  ["America/Anchorage", "Alaska"],
+  ["America/Los_Angeles", "US Pacific (Los Angeles, Seattle)"],
+  ["America/Vancouver", "Canada Pacific (Vancouver)"],
+  ["America/Tijuana", "Mexico (Tijuana)"],
+  ["America/Denver", "US Mountain (Denver)"],
+  ["America/Phoenix", "Arizona (Phoenix)"],
+  ["America/Edmonton", "Canada Mountain (Edmonton, Calgary)"],
+  ["America/Chicago", "US Central (Texas, Chicago)"],
+  ["America/Winnipeg", "Canada Central (Winnipeg)"],
+  ["America/Regina", "Saskatchewan (Regina)"],
+  ["America/Mexico_City", "Mexico (Mexico City)"],
+  ["America/Guatemala", "Central America (Guatemala, Costa Rica)"],
+  ["America/New_York", "US Eastern (New York, Miami)"],
+  ["America/Toronto", "Canada Eastern (Toronto, Montreal)"],
+  ["America/Cancun", "Mexico (Cancún)"],
+  ["America/Bogota", "Colombia (Bogotá)"],
+  ["America/Lima", "Peru (Lima)"],
+  ["America/Panama", "Panama, Jamaica"],
+  ["America/Halifax", "Canada Atlantic (Halifax)"],
+  ["America/Puerto_Rico", "Caribbean (Puerto Rico, Dominican Republic)"],
+  ["America/Caracas", "Venezuela (Caracas)"],
+  ["America/La_Paz", "Bolivia (La Paz)"],
+  ["America/Santiago", "Chile (Santiago)"],
+  ["America/St_Johns", "Newfoundland (St. John's)"],
+  ["America/Sao_Paulo", "Brazil (São Paulo, Rio)"],
+  ["America/Argentina/Buenos_Aires", "Argentina (Buenos Aires)"],
+  ["America/Montevideo", "Uruguay (Montevideo)"],
+  ["America/Nuuk", "Greenland (Nuuk)"],
+  ["America/Noronha", "Brazil (Fernando de Noronha)"],
+  ["Atlantic/South_Georgia", "South Georgia"],
+  ["Atlantic/Azores", "Azores"],
+  ["Atlantic/Cape_Verde", "Cape Verde"],
+  ["UTC", "UTC (Coordinated Universal Time)"],
+  ["Europe/London", "UK (London)"],
+  ["Europe/Dublin", "Ireland (Dublin)"],
+  ["Europe/Lisbon", "Portugal (Lisbon)"],
+  ["Atlantic/Reykjavik", "Iceland (Reykjavík)"],
+  ["Africa/Abidjan", "West Africa (Accra, Dakar)"],
+  ["Africa/Casablanca", "Morocco (Casablanca)"],
+  ["Europe/Stockholm", "Central Europe (Stockholm, Berlin, Paris)"],
+  ["Africa/Lagos", "West Central Africa (Lagos, Kinshasa)"],
+  ["Africa/Algiers", "Algeria, Tunisia"],
+  ["Europe/Helsinki", "Eastern Europe (Helsinki, Kyiv, Athens)"],
+  ["Europe/Kaliningrad", "Russia (Kaliningrad)"],
+  ["Africa/Cairo", "Egypt (Cairo)"],
+  ["Africa/Johannesburg", "South Africa (Johannesburg)"],
+  ["Asia/Jerusalem", "Israel (Jerusalem)"],
+  ["Asia/Beirut", "Lebanon (Beirut)"],
+  ["Asia/Riyadh", "Saudi Arabia (Riyadh)"],
+  ["Asia/Baghdad", "Iraq (Baghdad)"],
+  ["Africa/Nairobi", "East Africa (Nairobi)"],
+  ["Europe/Minsk", "Belarus (Minsk)"],
+  ["Europe/Moscow", "Moscow, St Petersburg"],
+  ["Europe/Istanbul", "Turkey (Istanbul)"],
+  ["Asia/Tehran", "Iran (Tehran)"],
+  ["Asia/Dubai", "Gulf (Dubai, Abu Dhabi)"],
+  ["Europe/Samara", "Russia (Samara)"],
+  ["Asia/Kabul", "Afghanistan (Kabul)"],
+  ["Asia/Karachi", "Pakistan (Karachi)"],
+  ["Asia/Yekaterinburg", "Russia (Yekaterinburg)"],
+  ["Asia/Kolkata", "India (Delhi, Mumbai)"],
+  ["Asia/Kathmandu", "Nepal (Kathmandu)"],
+  ["Asia/Dhaka", "Bangladesh (Dhaka)"],
+  ["Asia/Omsk", "Russia (Omsk)"],
+  ["Asia/Yangon", "Myanmar (Yangon)"],
+  ["Asia/Bangkok", "Thailand, Vietnam, Indonesia West (Bangkok, Hanoi, Jakarta)"],
+  ["Asia/Novosibirsk", "Russia (Novosibirsk, Krasnoyarsk)"],
+  ["Asia/Shanghai", "China (Beijing, Shanghai)"],
+  ["Asia/Singapore", "Singapore, Malaysia"],
+  ["Asia/Manila", "Philippines (Manila)"],
+  ["Asia/Taipei", "Taiwan (Taipei)"],
+  ["Asia/Hong_Kong", "Hong Kong"],
+  ["Australia/Perth", "Australia West (Perth)"],
+  ["Asia/Irkutsk", "Russia (Irkutsk)"],
+  ["Asia/Tokyo", "Japan (Tokyo)"],
+  ["Asia/Seoul", "South Korea (Seoul)"],
+  ["Asia/Yakutsk", "Russia (Yakutsk)"],
+  ["Australia/Darwin", "Australia Central (Darwin)"],
+  ["Australia/Adelaide", "Australia South (Adelaide)"],
+  ["Australia/Brisbane", "Australia East (Brisbane)"],
+  ["Australia/Sydney", "Australia East (Sydney, Melbourne)"],
+  ["Pacific/Guam", "Guam"],
+  ["Asia/Vladivostok", "Russia (Vladivostok)"],
+  ["Pacific/Noumea", "New Caledonia, Solomon Islands"],
+  ["Asia/Magadan", "Russia (Magadan, Sakhalin)"],
+  ["Pacific/Auckland", "New Zealand (Auckland)"],
+  ["Pacific/Fiji", "Fiji"],
+  ["Asia/Kamchatka", "Russia (Kamchatka)"],
+  ["Pacific/Tongatapu", "Tonga"],
+  ["Pacific/Apia", "Samoa (Apia)"],
+  ["Asia/Tashkent", "Uzbekistan (Tashkent)"],
+  ["Asia/Almaty", "Kazakhstan (Almaty)"],
+  ["Asia/Colombo", "Sri Lanka (Colombo)"],
+  ["Australia/Eucla", "Australia (Eucla)"],
+  ["Pacific/Norfolk", "Norfolk Island"],
+  ["Pacific/Tarawa", "Kiribati (Tarawa), Marshall Islands"],
+  ["Pacific/Chatham", "Chatham Islands"],
+  ["Pacific/Kiritimati", "Kiribati (Kiritimati)"]
+];
+const utcOffset = tz => { try { const n = new Intl.DateTimeFormat("en-US", { timeZone: tz, timeZoneName: "shortOffset" }).formatToParts(Date.now()).find(x => x.type === "timeZoneName").value; return n === "GMT" ? "UTC±0" : n.replace("GMT", "UTC"); } catch (e) { return ""; } };
+const offsetMin = tz => { const m = utcOffset(tz).match(/UTC([+-])(\d+)(?::(\d+))?/); return m ? (m[1] === "-" ? -1 : 1) * (Number(m[2]) * 60 + Number(m[3] || 0)) : 0; };
+ZONES.other = [{ tz: DEVICE_TZ, label: `This device (${DEVICE_TZ.replace(/_/g, " ")})`, device: true }]
+  .concat(OTHER_ZONES.filter(([tz]) => { try { new Intl.DateTimeFormat("en", { timeZone: tz }); return tz !== DEVICE_TZ; } catch (e) { return false; } })
+    .map(([tz, label]) => ({ tz, label }))
+    .sort((a, b) => offsetMin(a.tz) - offsetMin(b.tz)));
+let tzPref = (() => {
+  try { const t = JSON.parse(localStorage.getItem("airship-tz") || "null"); if (t && ZONES[t.region] && ZONES[t.region].some(z => z.tz === t.tz)) return t; } catch (e) {}
+  for (const r of ["eu", "us"]) { const z = ZONES[r].find(z => z.tz === DEVICE_TZ); if (z) return { region: r, tz: z.tz }; }
+  // only US time zones open on the USA tab (closest US zone by current offset); Canada, Mexico, South America etc. use "All time zones"
+  if (/^(America\/(New_York|Detroit|Chicago|Denver|Boise|Phoenix|Los_Angeles|Anchorage|Juneau|Sitka|Nome|Menominee|Indianapolis|Louisville|Fort_Wayne|Knox_IN|Shiprock|Metlakatla|Yakutat|Adak)|Pacific\/Honolulu|America\/(Indiana|Kentucky|North_Dakota)\/|US\/)/.test(DEVICE_TZ))
+    return { region: "us", tz: (ZONES.us.find(z => offsetMin(z.tz) === offsetMin(DEVICE_TZ)) || ZONES.us[0]).tz };
+  if (/^Europe\/(Kiev|Kyiv|Athens|Bucharest|Sofia|Riga|Tallinn|Vilnius|Chisinau)$/.test(DEVICE_TZ)) return { region: "eu", tz: "Europe/Helsinki" };
+  if (/^Europe\/(Dublin|Lisbon)$/.test(DEVICE_TZ)) return { region: "eu", tz: "Europe/London" };
+  if (/^Europe\//.test(DEVICE_TZ) && !/^Europe\/(Moscow|Istanbul|Samara|Volgograd|Kirov|Ulyanovsk|Saratov|Astrakhan|Minsk)$/.test(DEVICE_TZ)) return { region: "eu", tz: "Europe/Stockholm" };
+  return { region: "other", tz: DEVICE_TZ };
+})();
+const zoneLabel = () => (ZONES[tzPref.region].find(z => z.tz === tzPref.tz) || ZONES.other[0]).label;
+const fmtIn = (ms, opts) => new Intl.DateTimeFormat("en-GB", { timeZone: tzPref.tz, ...opts }).format(ms);
+const hm = ms => fmtIn(ms, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+const localDayKey = ms => { const p = new Intl.DateTimeFormat("en-CA", { timeZone: tzPref.tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(ms); return p; };
+// "04:00" when the shift starts on the same calendar date in your zone, otherwise "Mon 22:00"
+const shiftStart = k => { const ms = resetMs(k); return localDayKey(ms) === k ? hm(ms) : `${fmtIn(ms, { weekday: "short" })} ${hm(ms)}`; };
+const shiftWindow = k => { const a = resetMs(k), b = resetMs(addDays(k, 1)); return `${fmtIn(a, { weekday: "short", day: "numeric", month: "short" })} ${hm(a)} → ${fmtIn(b, { weekday: "short", day: "numeric", month: "short" })} ${hm(b)}`; };
+const dur = ms => { const m = Math.max(0, Math.round(ms / 60000)); const h = Math.floor(m / 60); return h ? `${h} h ${m % 60} min` : `${m} min`; };
 
 let store = { days: { ...SEED }, seedV: SEED_VERSION };
 try {
@@ -399,12 +571,15 @@ function renderBridge() {
   const box = document.getElementById("today-box"), el = document.getElementById("today-who");
   const pickToday = isPickDay(TODAY);
   box.style.setProperty("--cc", pickToday ? "var(--gold)" : colorOf(who));
-  document.getElementById("today-label").textContent = pickToday ? "Leadership pick today" : "Captain today";
+  document.getElementById("today-label").textContent = pickToday ? "Leadership pick now" : "Captain now";
   el.textContent = who || (pickToday ? "Not set yet" : "No captain set");
   el.classList.toggle("none", !who);
-  document.getElementById("today-when").textContent = nice(TODAY);
+  const nextK = addDays(TODAY, 1), nextWho = store.days[nextK];
+  document.getElementById("today-when").innerHTML =
+    `Server day ${esc(nice(TODAY))}<br>${esc(zoneLabel())}: ${esc(shiftWindow(TODAY))}<br>` +
+    `<span class="countdown">Next captain in <b>${dur(resetMs(nextK) - Date.now())}</b>${nextWho ? `: <b>${esc(nextWho)}</b>` : isPickDay(nextK) ? ": leadership pick" : ""}</span>`;
   const rows = [];
-  for (let i = 1; i <= 6; i++) { const k = addDays(TODAY, i), n = store.days[k]; const vs = isSunday(k) && k >= SUNDAY_RULE_FROM; rows.push(`<li style="--cc:${vs ? "var(--gold)" : n ? colorOf(n) : "var(--muted)"}"><span class="d">${i === 1 ? "Tomorrow" : short(k)}</span><span class="n">${n ? esc(n) : vs ? "Leadership pick (after VS)" : "–"}</span>${n && vs ? `<span class="vs-tag">VS pick</span>` : ""}</li>`); }
+  for (let i = 1; i <= 6; i++) { const k = addDays(TODAY, i), n = store.days[k]; const vs = isSunday(k) && k >= SUNDAY_RULE_FROM; rows.push(`<li style="--cc:${vs ? "var(--gold)" : n ? colorOf(n) : "var(--muted)"}"><span class="d">${short(k)}<small>from ${esc(fmtIn(resetMs(k), { weekday: "short" }))} ${esc(hm(resetMs(k)))}</small></span><span class="n">${n ? esc(n) : vs ? "Leadership pick (after VS)" : "–"}</span>${n && vs ? `<span class="vs-tag">VS pick</span>` : ""}</li>`); }
   document.getElementById("next-list").innerHTML = rows.join("");
 }
 
@@ -420,7 +595,7 @@ function renderCal() {
     const vs = isSunday(k) && k >= SUNDAY_RULE_FROM;
     const cls = ["day", vs ? "vs" : "", vs && !n ? "vs-open" : "", k === TODAY ? "today" : "", k < TODAY ? "past" : "", k === selected ? "sel" : "", highlight && (!n || n.toLowerCase() !== highlight.toLowerCase()) ? "dim" : ""].join(" ");
     html += `<button type="button" class="${cls}" data-k="${k}" style="--cc:${vs ? "var(--gold)" : colorOf(n)}" aria-label="${nice(k)}: ${n ? (vs ? "leadership pick " : "captain ") + esc(n) : vs ? "leadership pick, not set yet" : "no captain"}">
-      <span class="num">${vs ? `<span class="vs-mark">VS</span>` : ""}${d}</span>${n ? `<span class="cap">${esc(n)}</span>` : vs ? `<span class="vs-open-lbl">Leadership pick</span>` : `<span class="open">Open</span>`}</button>`;
+      <span class="num">${vs ? `<span class="vs-mark">VS</span>` : ""}${d}<span class="rs">from ${esc(shiftStart(k))}</span></span>${n ? `<span class="cap">${esc(n)}</span>` : vs ? `<span class="vs-open-lbl">Leadership pick</span>` : `<span class="open">Open</span>`}</button>`;
   }
   const tail = (7 - ((first + days) % 7)) % 7;
   for (let i = 0; i < tail; i++) html += `<div class="day empty" aria-hidden="true"></div>`;
@@ -430,7 +605,7 @@ function renderCal() {
 function renderEditor() {
   const n = store.days[selected] || "";
   const vsSel = isSunday(selected) && selected >= SUNDAY_RULE_FROM;
-  document.getElementById("edit-date").innerHTML = `${esc(nice(selected))}<small>${n ? (vsSel ? "Leadership pick: " : "Captain: ") + esc(n) : vsSel ? "Leadership pick after VS – type the chosen player's name" : "No captain set yet"}</small>`;
+  document.getElementById("edit-date").innerHTML = `${esc(nice(selected))}<small class="shift">Your time: ${esc(shiftWindow(selected))}</small><small>${n ? (vsSel ? "Leadership pick: " : "Captain: ") + esc(n) : vsSel ? "Leadership pick after VS – type the chosen player's name" : "No captain set yet"}</small>`;
   const inp = document.getElementById("cap-in");
   if (document.activeElement !== inp) inp.value = n;
   // regular days offer the regular captains; Sundays offer players the leadership picked before
@@ -522,7 +697,7 @@ document.getElementById("roster").addEventListener("keydown", e => { if ((e.key 
 function goMonth(dy, dm) { const d = new Date(viewY, viewM + dm, 1); viewY = d.getFullYear(); viewM = d.getMonth(); renderCal(); renderRoster(); }
 document.getElementById("m-prev").addEventListener("click", () => goMonth(0, -1));
 document.getElementById("m-next").addEventListener("click", () => goMonth(0, 1));
-document.getElementById("m-today").addEventListener("click", () => { viewY = now.getFullYear(); viewM = now.getMonth(); selected = TODAY; renderAll(); });
+document.getElementById("m-today").addEventListener("click", () => { const [y, m] = TODAY.split("-").map(Number); viewY = y; viewM = m - 1; selected = TODAY; renderAll(); });
 
 async function copyText(text, okText) {
   const area = document.getElementById("backup");
@@ -532,7 +707,7 @@ async function copyText(text, okText) {
 document.getElementById("copy-discord").addEventListener("click", () => {
   const prefix = `${viewY}-${pad(viewM + 1)}-`;
   const ks = Object.keys(store.days).filter(k => k.startsWith(prefix)).sort();
-  const L = [`**🛩️ Airship Captain Schedule – ${MONTHS[viewM]} ${viewY}**`, ""];
+  const L = [`**🛩️ Airship Captain Schedule – ${MONTHS[viewM]} ${viewY}**`, `_Each day starts at server reset 00:00 UTC-2 (02:00 UTC)_`, ""];
   if (!ks.length) L.push("_No captains set this month_");
   ks.forEach(k => L.push(`${k === TODAY ? "➡️ " : ""}${short(k)} – **${store.days[k]}**${isPickDay(k) ? " ⭐ leadership pick" : ""}`));
   copyText(L.join("\n"), "Copied. Paste it into Discord.");
@@ -556,6 +731,34 @@ clearBtn.addEventListener("click", () => {
 });
 
 renderAll();
+
+/* ---- zone switch ---- */
+function renderZone() {
+  document.querySelectorAll(".seg-btn").forEach(b => b.setAttribute("aria-checked", b.dataset.region === tzPref.region));
+  const sel = document.getElementById("zone-sel");
+  sel.innerHTML = ZONES[tzPref.region].map(z => `<option value="${esc(z.tz)}"${z.tz === tzPref.tz ? " selected" : ""}>${tzPref.region === "other" ? esc(utcOffset(z.tz)) + " · " : ""}${esc(z.label)}</option>`).join("");
+  sel.hidden = ZONES[tzPref.region].length < 2;
+  const k = TODAY, a = resetMs(k), prevDay = localDayKey(a) !== k;
+  document.getElementById("zone-note").innerHTML = `Server reset 00:00 UTC-2. The captain changes at <b>${esc(hm(a))}${prevDay ? (Number(hm(a).slice(0, 2)) >= 18 ? " the evening before" : " the day before") : ""}</b> your time · ${esc(zoneLabel())}. Times follow summer and winter time automatically.`;
+}
+document.querySelector(".seg").addEventListener("click", e => {
+  const b = e.target.closest(".seg-btn"); if (!b) return;
+  const region = b.dataset.region;
+  tzPref = { region, tz: region === "other" ? DEVICE_TZ : (ZONES[region].find(z => z.tz === DEVICE_TZ) || ZONES[region][0]).tz };
+  try { localStorage.setItem("airship-tz", JSON.stringify(tzPref)); } catch (e) {}
+  renderZone(); renderAll();
+});
+document.getElementById("zone-sel").addEventListener("change", e => {
+  tzPref = { region: tzPref.region, tz: e.target.value };
+  try { localStorage.setItem("airship-tz", JSON.stringify(tzPref)); } catch (e) {}
+  renderZone(); renderAll();
+});
+renderZone();
+// keep "Captain now" and the countdown current; roll over to the next server day at the reset
+setInterval(() => {
+  const k = serverKeyAt(Date.now());
+  if (k !== TODAY) { if (selected === TODAY) selected = k; TODAY = k; renderZone(); renderAll(); } else renderBridge();
+}, 30000);
 
 /* ---- Fill rotation ---- */
 const rotNames = document.getElementById("rot-names"), rotFrom = document.getElementById("rot-from"), rotTo = document.getElementById("rot-to"),
